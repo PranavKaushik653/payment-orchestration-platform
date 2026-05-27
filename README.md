@@ -1,125 +1,195 @@
-# Yuno Payment Orchestration System
+# Payment Orchestration Platform
 
-A simplified payment orchestration engine built for the **Yuno Backend Developer (Java Core) Assessment**.
+A production-inspired payment orchestration platform built using Java and Spring Boot.
 
----
-
-## What This Does
-
-Accepts payment requests from merchants, routes them to the correct payment provider (CARD → Provider A, UPI → Provider B), handles retries and failover if a provider is down, and guarantees a payment is never processed twice — even if the same request is sent multiple times.
+The system accepts merchant payment requests, routes transactions to different payment providers based on payment method, supports retries and failover handling, and guarantees idempotent payment execution using Redis.
 
 ---
 
-## Tech Stack
+# Features
+
+- Payment routing engine
+- Provider failover handling
+- Retry and circuit breaker support
+- Redis-backed idempotency
+- PostgreSQL persistence
+- RESTful APIs
+- OpenAPI / Swagger documentation
+- Prometheus metrics support
+- Integration + unit testing
+- Production-inspired modular architecture
+
+---
+
+# Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Language | Java 21 |
-| Framework | Spring Boot 3.5.14 |
+| Framework | Spring Boot 3 |
 | Database | PostgreSQL 16 |
 | Cache / Idempotency Store | Redis 7 |
 | Build Tool | Maven 3.9+ |
-| Resilience | Resilience4j (retry + circuit breaker) |
-| API Docs | SpringDoc OpenAPI (Swagger UI) |
+| Resilience | Resilience4j |
+| API Docs | SpringDoc OpenAPI |
 | Metrics | Micrometer + Prometheus |
 
 ---
 
-## Prerequisites
+# System Workflow
 
-You need three things installed before starting. Check each one:
-
-```bash
-java -version
-# Must print: openjdk 21 or higher
-# Download from: https://adoptium.net/ (choose Java 21, any OS)
-
-mvn -version
-# Must print: Apache Maven 3.9 or higher
-# Download from: https://maven.apache.org/download.cgi
-
-docker --version
-# Must print: Docker version 24 or higher
-# Download from: https://docs.docker.com/get-docker/
+```text
+Merchant Request
+      ↓
+Payment Controller
+      ↓
+Idempotency Validation (Redis)
+      ↓
+Routing Engine
+      ↓
+Provider Connector
+      ↓
+Retry + Circuit Breaker Logic
+      ↓
+Persist Result (PostgreSQL)
+      ↓
+Return Response
 ```
-
-If all three commands print a version number you are ready to proceed.
 
 ---
 
-## Running the Application
+# Prerequisites
 
-### Step 1 — Start PostgreSQL and Redis with Docker
+Install the following before running the application.
 
-Run these two commands. They start both services in the background:
+## Java 21
 
 ```bash
-docker run -d --name yuno-postgres -e POSTGRES_DB=yuno_payments -e POSTGRES_USER=yuno -e POSTGRES_PASSWORD=yuno_secret -p 5432:5432 --health-cmd="pg_isready -U yuno" --health-interval=3s postgres:16-alpine
-
-docker run -d --name yuno-redis -p 6379:6379 --health-cmd="redis-cli ping" --health-interval=3s redis:7-alpine
+java -version
 ```
 
-Wait about 10 seconds, then verify both containers are healthy:
+Expected:
+
+```bash
+openjdk 21
+```
+
+Download:
+https://adoptium.net/
+
+---
+
+## Maven 3.9+
+
+```bash
+mvn -version
+```
+
+Download:
+https://maven.apache.org/download.cgi
+
+---
+
+## Docker
+
+```bash
+docker --version
+```
+
+Download:
+https://docs.docker.com/get-docker/
+
+---
+
+# Running the Application
+
+## Step 1 — Start PostgreSQL and Redis
+
+```bash
+docker run -d \
+  --name payment-postgres \
+  -e POSTGRES_DB=payment_orchestrator \
+  -e POSTGRES_USER=app_user \
+  -e POSTGRES_PASSWORD=app_secret \
+  -p 5432:5432 \
+  postgres:16-alpine
+
+docker run -d \
+  --name payment-redis \
+  -p 6379:6379 \
+  redis:7-alpine
+```
+
+Verify containers:
 
 ```bash
 docker ps
 ```
 
-You should see `(healthy)` next to both `yuno-postgres` and `yuno-redis`. If it still says `(health: starting)`, wait a few more seconds and run `docker ps` again.
+---
 
-### Step 2 — Clone and Build
+## Step 2 — Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/yuno-payment-orchestration.git
-cd yuno-payment-orchestration
+git clone https://github.com/YOUR_USERNAME/payment-orchestration-platform.git
+
+cd payment-orchestration-platform
+```
+
+---
+
+## Step 3 — Build the Project
+
+```bash
 mvn clean package -DskipTests
 ```
 
-Expected output ends with:
-```
+Expected:
+
+```bash
 BUILD SUCCESS
 ```
 
-If you see `BUILD FAILURE`, confirm `java -version` prints 21 or higher — that is the most common cause.
+---
 
-### Step 3 — Run the Application
+## Step 4 — Run the Application
 
 ```bash
 mvn spring-boot:run
 ```
 
-The application is ready when you see this line in the terminal output:
+Application starts at:
+
+```text
+http://localhost:8080
 ```
-Started PaymentOrchestrationApplication in X.XXX seconds
-```
 
-> **Note:** The database schema (the `payments` table and its indexes) is created automatically on first startup. You do not need to run any SQL scripts manually.
+---
 
-### Step 4 — Confirm It Is Running
-
-Open a new terminal tab and run:
+# Health Check
 
 ```bash
 curl http://localhost:8080/actuator/health
 ```
 
 Expected response:
-```json
-{"status":"UP"}
-```
 
-The application is running correctly. Proceed to the API usage section.
+```json
+{
+  "status": "UP"
+}
+```
 
 ---
 
-## API Usage
+# API Usage
 
-### Create a CARD Payment
+# Create CARD Payment
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/payments \
   -H "Content-Type: application/json" \
-  -H "X-Idempotency-Key: test-key-001" \
+  -H "X-Idempotency-Key: payment-key-001" \
   -d '{
     "merchantId": "merchant-001",
     "amount": 150.00,
@@ -128,10 +198,11 @@ curl -X POST http://localhost:8080/api/v1/payments \
   }'
 ```
 
-Expected response (`201 Created`):
+Example response:
+
 ```json
 {
-  "paymentId": "a1b2c3d4-...",
+  "paymentId": "a1b2c3d4",
   "status": "SUCCESS",
   "assignedProvider": "PROVIDER_A",
   "providerTransactionId": "PA-XXXXXXXX",
@@ -142,14 +213,14 @@ Expected response (`201 Created`):
 }
 ```
 
-`PROVIDER_A` in the response confirms that CARD routing worked correctly.
+---
 
-### Create a UPI Payment
+# Create UPI Payment
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/payments \
   -H "Content-Type: application/json" \
-  -H "X-Idempotency-Key: test-key-002" \
+  -H "X-Idempotency-Key: payment-key-002" \
   -d '{
     "merchantId": "merchant-002",
     "amount": 500.00,
@@ -158,19 +229,19 @@ curl -X POST http://localhost:8080/api/v1/payments \
   }'
 ```
 
-`assignedProvider` will be `PROVIDER_B`, confirming UPI routing.
+---
 
-### Fetch a Payment by ID
-
-Copy the `paymentId` UUID from any create response above and substitute it:
+# Fetch Payment By ID
 
 ```bash
 curl http://localhost:8080/api/v1/payments/{paymentId}
 ```
 
-### Test Idempotency
+---
 
-This demonstrates that a customer cannot be charged twice if a merchant retries. Run this command **twice** without changing anything:
+# Idempotency Demo
+
+Run this command twice using the same idempotency key.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/payments \
@@ -184,253 +255,222 @@ curl -X POST http://localhost:8080/api/v1/payments \
   }'
 ```
 
-Both responses will contain the **identical `paymentId`**. The second call returns the cached result — no new charge is created.
+Both responses return the same `paymentId`, proving duplicate payments are prevented.
 
 ---
 
-## API Documentation (Swagger UI)
+# Swagger API Documentation
 
-With the application running, open this in your browser:
+Open in browser:
 
-```
+```text
 http://localhost:8080/swagger-ui/index.html
 ```
 
-This shows the full interactive API documentation with request/response schemas. You can try the endpoints directly from the browser.
+Swagger provides:
+- interactive API testing
+- request/response schemas
+- endpoint documentation
 
 ---
 
-## Running the Tests
-
-The test suite uses H2 (in-memory database) and embedded Redis, so **Docker does not need to be running to run the tests**.
+# Running Tests
 
 ```bash
 mvn test
 ```
 
-Expected output:
-```
-Tests run: 21, Failures: 0, Errors: 0, Skipped: 0
+Expected:
+
+```text
 BUILD SUCCESS
 ```
 
-### What the Tests Cover
+---
 
-| Suite | Class | What It Tests |
-|---|---|---|
-| Sanity | `ApplicationSanityTest` | Context loads, all beans wired, DB connection healthy |
-| Integration | `PaymentIntegrationTest` | Full HTTP flow for CARD payment, UPI payment, fetch by ID |
-| Negative | `PaymentNegativeTest` | Validation errors, provider failure, 404, idempotency replay |
-| Unit | `RoutingEngineUnitTest` | Routing rules and failover logic in isolation |
+# Test Coverage
+
+| Suite | Purpose |
+|---|---|
+| Integration Tests | End-to-end payment flow |
+| Unit Tests | Routing and orchestration logic |
+| Negative Tests | Validation and failure scenarios |
+| Repository Tests | Database persistence validation |
 
 ---
 
-## Stopping and Cleaning Up
+# Project Structure
 
-```bash
-# Stop the application
-Ctrl + C   (in the terminal where mvn spring-boot:run is running)
-
-# Stop and remove the Docker containers
-docker stop yuno-postgres yuno-redis
-docker rm yuno-postgres yuno-redis
-```
-
----
-
-## Project Structure
-
-```
-src/main/java/com/yuno/payments/
+```text
+src/main/java/com/payments/orchestrator/
 ├── controller/
-│   └── PaymentController.java           # HTTP entry point — POST and GET endpoints
+│   └── PaymentController.java
 ├── service/
-│   └── PaymentOrchestrationService.java # Orchestration brain — idempotency + failover
+│   └── PaymentOrchestrationService.java
 ├── routing/
-│   └── RoutingEngine.java               # CARD → ProviderA, UPI → ProviderB
+│   └── RoutingEngine.java
 ├── provider/
-│   └── ProviderConnectors.java          # Provider A and B with retry + circuit breaker
+│   └── ProviderConnectors.java
 ├── idempotency/
-│   └── IdempotencyStore.java            # Redis-backed exactly-once guarantee
+│   └── IdempotencyStore.java
 ├── model/
-│   ├── Payment.java                     # JPA entity (PostgreSQL)
-│   └── PaymentDTOs.java                 # Request and Response DTOs
+│   ├── Payment.java
+│   └── PaymentDTOs.java
 ├── repository/
-│   └── PaymentRepository.java           # Spring Data JPA
+│   └── PaymentRepository.java
 └── exception/
-    ├── PaymentExceptions.java            # Typed domain exceptions
-    └── GlobalExceptionHandler.java       # Maps exceptions to HTTP status codes
+    ├── PaymentExceptions.java
+    └── GlobalExceptionHandler.java
 ```
 
 ---
 
-## Architecture
+# Architecture Overview
 
-```
+```text
 Client
-  ↓  POST /api/v1/payments  +  X-Idempotency-Key header
-PaymentController            → validates input, extracts header
   ↓
-PaymentOrchestrationService  → checks Redis for duplicate key
-                             → saves PENDING record to PostgreSQL
+PaymentController
   ↓
-RoutingEngine                → CARD → PROVIDER_A  |  UPI → PROVIDER_B
+PaymentOrchestrationService
   ↓
-ProviderConnector            → calls provider (Resilience4j: 3 retries, 500ms wait)
-  ↓  if all retries fail  ↓
-  └─ resolveFailover()       → switches to the other provider
+Redis Idempotency Validation
   ↓
-PaymentRepository            → saves SUCCESS or FAILED status to PostgreSQL
-IdempotencyStore             → stores idempotency key → paymentId in Redis (24h TTL)
+RoutingEngine
+  ↓
+Provider Connector
+  ↓
+Retry + Circuit Breaker
+  ↓
+PostgreSQL Persistence
+  ↓
+API Response
 ```
 
 ---
 
-## Demo Video
+# Reliability Features
 
-Will be put soon....
-
-The video covers:
-- Architecture walkthrough (code)
-- Swagger UI tour
-- Live Postman demo — happy paths, idempotency, and failure scenarios
-
----
-
-## Troubleshooting
-
-**`Connection refused` on port 5432 or 6379**
-Docker containers are not running. Run `docker ps` to check. If you do not see `yuno-postgres` and `yuno-redis` listed, repeat Step 1.
-
-**`BUILD FAILURE` during `mvn clean package`**
-Run `java -version`. Must be Java 21 or higher. If you have multiple Java versions installed, set `JAVA_HOME` to point to Java 21.
-
-**Port 8080 already in use**
-Run the app on a different port:
-```bash
-mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=9090
-```
-Then replace `8080` with `9090` in all commands above.
-
-**Tests pass but application fails to start**
-Tests use an in-memory database and do not require Docker. The running application requires both PostgreSQL and Redis. Confirm Step 1 completed and `docker ps` shows both containers as `(healthy)`.
-
-
-## Production Readiness & Future Improvements
-
-This project is intentionally designed as a modular monolith first, focusing on correctness, reliability, and maintainability before introducing distributed-system complexity.
-
-The current implementation already includes:
-- provider routing and failover
-- retries and circuit breakers
-- Redis-backed idempotency
-- PostgreSQL persistence
-- stateless architecture
-- resilience patterns using Resilience4j
-
-To evolve this into a production-grade payment orchestration platform, the following improvements are planned.
-
----
-
-### Reliability Improvements
-
-| Improvement | Why It Matters |
+| Feature | Purpose |
 |---|---|
-| Correlation IDs | Enables end-to-end request tracing and easier production debugging |
-| Structured JSON Logging | Improves centralized monitoring and log analysis |
-| Advanced Retry Policies | Prevents aggressive retries during provider outages |
-| Provider-specific Timeouts | Avoids thread exhaustion from slow providers |
-| Bulkhead Isolation | Prevents one failing provider from impacting the whole system |
-| Distributed Rate Limiting | Protects APIs from abuse and traffic spikes |
+| Idempotency | Prevent duplicate payment execution |
+| Retry Logic | Recover from temporary provider failures |
+| Circuit Breakers | Prevent cascading failures |
+| Provider Failover | Switch provider if one becomes unavailable |
+| Stateless Design | Easier horizontal scaling |
+| Validation Layer | Reject invalid requests early |
 
 ---
 
-### Scalability Improvements
+# Planned Improvements
 
-| Improvement | Why It Matters |
-|---|---|
-| Kafka-based Async Processing | Decouples API latency from provider response time |
-| Redis Response Caching | Reduces repeated database lookups |
-| Horizontal Scaling | Allows multiple application instances behind a load balancer |
-| Read Replica Support | Scales read-heavy payment lookup traffic |
-| Distributed Locking | Prevents race conditions in concurrent workflows |
-| Outbox Pattern | Ensures reliable event publishing and consistency |
+## Scalability
+
+- Kafka-based asynchronous processing
+- Distributed locking
+- Read replicas
+- Horizontal autoscaling
+- Event-driven workflows
+
+## Observability
+
+- OpenTelemetry tracing
+- Grafana dashboards
+- Centralized logging
+- Correlation IDs
+
+## Cloud-Native Deployment
+
+- Docker Compose
+- Kubernetes deployment
+- Rolling updates
+- Externalized configuration
 
 ---
 
-### Planned Async Payment Flow
+# Planned Async Architecture
 
 ```text
 Merchant Request
-    ↓
+      ↓
 Save Payment as PENDING
-    ↓
+      ↓
 Publish Kafka Event
-    ↓
-Return Response Immediately
+      ↓
+Immediate API Response
 
 Background Worker
-    ↓
-Process Provider Logic
-    ↓
+      ↓
+Provider Processing
+      ↓
 Update Payment Status
-    ↓
-Trigger Merchant Webhook
+      ↓
+Webhook Notification
 ```
 
-### Benefits
-- non-blocking request handling
-- improved throughput
-- better fault tolerance
-- resilient provider failure handling
-- scalable asynchronous workflows
+---
+
+# Troubleshooting
+
+## PostgreSQL or Redis Connection Refused
+
+Check running containers:
+
+```bash
+docker ps
+```
+
+Restart containers if necessary.
 
 ---
 
-### Observability & Monitoring
+## Build Failure
 
-Planned observability improvements include:
-- Prometheus metrics
-- Grafana dashboards
-- OpenTelemetry tracing
-- centralized logging
-- health checks and readiness probes
-- correlation-based request tracing
+Ensure Java 21 is installed:
 
-These improvements help with:
-- production monitoring
-- incident debugging
-- performance analysis
-- operational visibility
+```bash
+java -version
+```
 
 ---
 
-### Cloud-Native Deployment Roadmap
+## Port 8080 Already In Use
 
-The application is being designed for cloud-native deployment patterns using:
-- Docker
-- Docker Compose
-- Kubernetes
-- horizontal autoscaling
-- rolling deployments
-- externalized configuration
+Run on another port:
 
-This enables:
-- easier deployment
-- scalable infrastructure
-- fault tolerance
-- zero-downtime releases
+```bash
+mvn spring-boot:run \
+  -Dspring-boot.run.arguments=--server.port=9090
+```
 
 ---
 
-### Architectural Philosophy
+# Architectural Philosophy
 
-This project intentionally follows a modular monolith architecture instead of premature microservice decomposition.
+This project intentionally follows a modular monolith architecture before introducing distributed-system complexity.
 
 The goal is to:
-- reduce operational complexity
-- simplify debugging
-- maintain strong transactional consistency
-- improve development velocity
+- simplify development
+- improve maintainability
+- reduce operational overhead
+- preserve transactional consistency
 
-Internal modules are designed with clear boundaries so they can later evolve into independently deployable services if scaling requirements justify it.
+The internal modules are designed with clean boundaries so they can later evolve into independently deployable microservices if required.
+
+---
+
+# Future Goals
+
+- Multi-provider smart routing
+- Dynamic provider health scoring
+- Real payment gateway integrations
+- Async settlement workflows
+- Fraud detection hooks
+- Merchant webhook infrastructure
+- Distributed tracing support
+
+---
+
+# License
+
+This project is intended for educational and portfolio purposes.
